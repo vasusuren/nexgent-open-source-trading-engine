@@ -29,7 +29,7 @@ export async function createTradingSignal(req: AuthenticatedRequest, res: Respon
       });
     }
 
-    const { tokenAddress, symbol, signalType, activationReason, signalStrength, source }: CreateTradingSignalRequest = req.body;
+    const { tokenAddress, symbol, signalType, activationReason, signalStrength, source, positionSizeMultiplier, signalScore, scoreComponents }: CreateTradingSignalRequest = req.body;
 
     // Validate input
     if (!tokenAddress || typeof tokenAddress !== 'string' || tokenAddress.trim().length === 0) {
@@ -105,6 +105,40 @@ export async function createTradingSignal(req: AuthenticatedRequest, res: Respon
       }
     }
 
+    // Validate positionSizeMultiplier if provided (B3)
+    if (positionSizeMultiplier !== undefined && positionSizeMultiplier !== null) {
+      if (typeof positionSizeMultiplier !== 'number' || !isFinite(positionSizeMultiplier)) {
+        return res.status(400).json({ error: 'positionSizeMultiplier must be a number' });
+      }
+      if (positionSizeMultiplier < 0.25 || positionSizeMultiplier > 4.0) {
+        return res.status(400).json({ error: 'positionSizeMultiplier must be between 0.25 and 4.0' });
+      }
+    }
+
+    // Validate signalScore if provided (B6)
+    if (signalScore !== undefined && signalScore !== null) {
+      if (typeof signalScore !== 'number' || !isFinite(signalScore)) {
+        return res.status(400).json({ error: 'signalScore must be a number' });
+      }
+      if (signalScore < 0 || signalScore > 1) {
+        return res.status(400).json({ error: 'signalScore must be between 0 and 1' });
+      }
+    }
+
+    // Extract expectedMovePct from scoreComponents (B6)
+    let expectedMovePct: number | undefined;
+    if (scoreComponents !== undefined && scoreComponents !== null) {
+      if (typeof scoreComponents !== 'object' || Array.isArray(scoreComponents)) {
+        return res.status(400).json({ error: 'scoreComponents must be an object' });
+      }
+      if (scoreComponents.expectedMovePct !== undefined) {
+        if (typeof scoreComponents.expectedMovePct !== 'number' || !isFinite(scoreComponents.expectedMovePct)) {
+          return res.status(400).json({ error: 'scoreComponents.expectedMovePct must be a number' });
+        }
+        expectedMovePct = scoreComponents.expectedMovePct;
+      }
+    }
+
     // Deduplicate: reject duplicate signals for same token+type+strength within a short window
     const normalizedToken = tokenAddress.trim();
     const dedupeKey = REDIS_KEYS.SIGNAL_CREATION_DEDUPE(req.user.id, normalizedToken, signalType.trim(), signalStrength);
@@ -125,6 +159,9 @@ export async function createTradingSignal(req: AuthenticatedRequest, res: Respon
         activationReason: activationReason?.trim() || null,
         signalStrength,
         source: source?.trim() || null,
+        signalScore: signalScore ?? null,
+        positionSizeMultiplier: positionSizeMultiplier ?? null,
+        expectedMovePct: expectedMovePct ?? null,
         userId: req.user.id,
       },
     });

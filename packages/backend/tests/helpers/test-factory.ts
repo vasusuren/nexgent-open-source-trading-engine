@@ -154,6 +154,8 @@ export function createMockPosition(overrides: Partial<OpenPosition> = {}): OpenP
     realizedProfitSol: 0,
     tpBatchStartLevel: 0,
     totalTakeProfitLevels: null,
+    signalScore: null,
+    expectedMovePct: null,
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,

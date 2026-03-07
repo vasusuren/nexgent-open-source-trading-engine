@@ -87,6 +87,12 @@ export interface TradeExecutionRequest {
   tokenSymbol?: string;     // Optional: will be fetched if not provided
   signalId?: number;        // Optional: link to trading signal
   positionSize?: number;    // Optional: override calculated position size
+  /** B3: Multiplier applied to base position size (0.25–4.0), capped at maxPurchasePerToken */
+  positionSizeMultiplier?: number;
+  /** B7: Composite quality score [0,1] stored on the created position */
+  signalScore?: number;
+  /** B7: Magnitude regressor output in % stored on the created position */
+  expectedMovePct?: number;
 }
 
 /**
@@ -112,7 +118,7 @@ export interface SaleExecutionRequest {
   agentId: string;
   positionId: string;  // Position to close
   walletAddress?: string;   // Optional: uses default wallet if not provided
-  reason?: 'manual' | 'stop_loss' | 'stale_trade' | 'take_profit';  // Optional: reason for closure
+  reason?: 'manual' | 'stop_loss' | 'stale_trade' | 'take_profit' | 'replaced_by_higher_score_signal';  // Optional: reason for closure
 }
 
 /**
@@ -305,7 +311,17 @@ class TradingExecutor {
       }
 
       const config = validation.config;
-      const positionSize = validation.positionSize;
+      // B4: Apply position size multiplier if provided, capped at maxPurchasePerToken
+      let positionSize = validation.positionSize;
+      if (
+        request.positionSizeMultiplier !== undefined &&
+        request.positionSizeMultiplier !== 1.0
+      ) {
+        positionSize = Math.min(
+          positionSize * request.positionSizeMultiplier,
+          config.purchaseLimits.maxPurchasePerToken,
+        );
+      }
 
       // Step 2: Get wallet (needed for swap execution)
       const wallet = await this.agentRepo.findWalletByAddress(walletAddress);
@@ -601,7 +617,9 @@ class TradingExecutor {
             purchasePrice,
             tokenAmount,
             tx, // Pass transaction context
-            balanceDebitSol // Total SOL debited (protocol + network fees)
+            balanceDebitSol, // Total SOL debited (protocol + network fees)
+            request.signalScore ?? null,    // B7: signal quality score
+            request.expectedMovePct ?? null // B7: magnitude regressor output
           );
 
           positionId = position.id;

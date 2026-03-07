@@ -81,6 +81,10 @@ export interface PositionResponse {
     lastDcaTime: Date | null;
   };
   
+  // Signal metrics (B8: from signal engine at entry time)
+  signalScore: number | null;
+  expectedMovePct: number | null;
+
   // Timestamps
   createdAt: Date;
   updatedAt: Date;

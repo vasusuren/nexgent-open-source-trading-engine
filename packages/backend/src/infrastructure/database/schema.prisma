@@ -127,9 +127,12 @@ model TradingSignal {
   signalType       String                @map("signal_type") @db.VarChar(50)
   activationReason String?               @map("activation_reason")
   signalStrength   Int                   @map("signal_strength")
-  source           String?               @map("source") @db.VarChar(100)
-  userId           String?               @map("user_id") @db.Uuid
-  user             User?                 @relation(fields: [userId], references: [id], onDelete: SetNull)
+  source                 String?               @map("source") @db.VarChar(100)
+  signalScore            Float?                @map("signal_score")
+  positionSizeMultiplier Float?                @map("position_size_multiplier")
+  expectedMovePct        Float?                @map("expected_move_pct")
+  userId                 String?               @map("user_id") @db.Uuid
+  user                   User?                 @relation(fields: [userId], references: [id], onDelete: SetNull)
   historicalSwaps  AgentHistoricalSwap[]
   transactions     AgentTransaction[]
   signalExecutions SignalExecution[]
@@ -322,7 +325,11 @@ model AgentPosition {
   tpBatchStartLevel         Int              @default(0) @map("tp_batch_start_level")
   /// Total TP levels including appended batches from DCA (null = use config.levels.length)
   totalTakeProfitLevels     Int?             @map("total_take_profit_levels")
-  
+  /// B7: Composite quality score [0,1] from signal engine at entry time
+  signalScore               Float?           @map("signal_score")
+  /// B7: Magnitude regressor output in % (e.g. 18.5) from signal engine at entry time
+  expectedMovePct           Float?           @map("expected_move_pct")
+
   agent                     Agent            @relation(fields: [agentId], references: [id], onDelete: Cascade)
   purchaseTransaction       AgentTransaction @relation(fields: [purchaseTransactionId], references: [id], onDelete: Cascade)
   wallet                    AgentWallet      @relation(fields: [walletAddress], references: [walletAddress], onDelete: Cascade)

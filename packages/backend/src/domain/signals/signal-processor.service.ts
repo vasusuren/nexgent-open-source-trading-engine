@@ -9,6 +9,7 @@ import { signalEventEmitter } from './signal-events.js';
 import { agentEligibilityService } from './agent-eligibility.service.js';
 import { signalExecutionService } from './execution-tracker.service.js';
 import { tradingExecutor, TradingExecutorError } from '../trading/trading-executor.service.js';
+import { portfolioManagerService } from '../portfolio/index.js';
 import { fetchTokenMetrics } from '@/infrastructure/external/jupiter/index.js';
 import type { TradingSignal } from '@prisma/client';
 import { signalProcessingLatency, signalProcessingCount, errorCount } from '@/infrastructure/metrics/metrics.js';
@@ -108,17 +109,66 @@ export class SignalProcessor {
     }
 
     try {
-      // 2. Execute trade
+      // 2. Portfolio management: decide whether to proceed, replace, or suppress
+      const decision = await portfolioManagerService.evaluateTrade({
+        agentId,
+        incomingScore: (signal as unknown as Record<string, unknown>).signalScore != null
+          ? Number((signal as unknown as Record<string, unknown>).signalScore)
+          : undefined,
+        incomingExpectedMovePct: (signal as unknown as Record<string, unknown>).expectedMovePct != null
+          ? Number((signal as unknown as Record<string, unknown>).expectedMovePct)
+          : undefined,
+        now: new Date(),
+      });
+
+      if (decision.action === 'suppress') {
+        logger.info({
+          signalId: signal.id,
+          agentId,
+          executionId,
+          reason: decision.reason,
+          weakestRv: decision.weakestRv,
+          incomingScore: decision.incomingScore,
+        }, 'Signal suppressed by portfolio manager');
+        await signalExecutionService.updateExecutionSkipped(executionId, decision.reason);
+        return;
+      }
+
+      if (decision.action === 'replace') {
+        logger.info({
+          signalId: signal.id,
+          agentId,
+          executionId,
+          positionIdToClose: decision.positionIdToClose,
+          positionSymbol: decision.positionSymbol,
+        }, 'Portfolio full: replacing weakest position with incoming signal');
+        await tradingExecutor.executeSale({
+          agentId,
+          positionId: decision.positionIdToClose,
+          reason: 'replaced_by_higher_score_signal',
+        });
+        // Fall through — executePurchase opens the new position
+      }
+
+      // 3. Execute trade
       // Note: walletAddress is optional, executor will pick default for agent
       const result = await tradingExecutor.executePurchase({
         agentId,
         tokenAddress: signal.tokenAddress,
         tokenSymbol: signal.symbol || undefined,
         signalId: signal.id,
-        // Position size is calculated by executor based on agent config
+        positionSizeMultiplier: (signal as unknown as Record<string, unknown>).positionSizeMultiplier != null
+          ? Number((signal as unknown as Record<string, unknown>).positionSizeMultiplier)
+          : undefined,
+        signalScore: (signal as unknown as Record<string, unknown>).signalScore != null
+          ? Number((signal as unknown as Record<string, unknown>).signalScore)
+          : undefined,
+        expectedMovePct: (signal as unknown as Record<string, unknown>).expectedMovePct != null
+          ? Number((signal as unknown as Record<string, unknown>).expectedMovePct)
+          : undefined,
       });
 
-      // 3. Update execution status (Success)
+      // 4. Update execution status (Success)
       await signalExecutionService.updateExecutionSuccess(executionId, result.transactionId);
       
       logger.info({

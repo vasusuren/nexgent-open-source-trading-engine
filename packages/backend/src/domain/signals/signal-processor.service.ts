@@ -10,6 +10,8 @@ import { agentEligibilityService } from './agent-eligibility.service.js';
 import { signalExecutionService } from './execution-tracker.service.js';
 import { tradingExecutor, TradingExecutorError } from '../trading/trading-executor.service.js';
 import { portfolioManagerService } from '../portfolio/index.js';
+import { redisService } from '@/infrastructure/cache/redis-client.js';
+import { REDIS_KEYS, REDIS_TTL } from '@/shared/constants/redis-keys.js';
 import { fetchTokenMetrics } from '@/infrastructure/external/jupiter/index.js';
 import type { TradingSignal } from '@prisma/client';
 import { signalProcessingLatency, signalProcessingCount, errorCount } from '@/infrastructure/metrics/metrics.js';
@@ -108,7 +110,18 @@ export class SignalProcessor {
       return;
     }
 
+    // Acquire per-agent lock to prevent concurrent signals from double-spending capital
+    const lockKey = REDIS_KEYS.LOCK(`portfolio:agent:${agentId}`);
+    const lockToken = await redisService.acquireLock(lockKey, REDIS_TTL.LOCK);
+
     try {
+      if (!lockToken) {
+        // Another signal is mid-execution for this agent — skip rather than risk double-spend
+        logger.info({ signalId: signal.id, agentId, executionId }, 'Signal skipped: agent portfolio lock held by concurrent signal');
+        await signalExecutionService.updateExecutionSkipped(executionId, 'agent_portfolio_locked');
+        return;
+      }
+
       // 2. Portfolio management: decide whether to proceed, replace, or suppress
       const decision = await portfolioManagerService.evaluateTrade({
         agentId,
@@ -212,6 +225,10 @@ export class SignalProcessor {
       // Check if it was a "soft" failure (e.g. insufficient balance) or hard error
       // We record it as FAILED regardless, but error message helps
       await signalExecutionService.updateExecutionFailure(executionId, error as Error);
+    } finally {
+      if (lockToken) {
+        await redisService.releaseLock(lockKey, lockToken);
+      }
     }
   }
 }

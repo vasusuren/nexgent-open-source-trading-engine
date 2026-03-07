@@ -172,6 +172,11 @@ export const signalConfigSchema = z.object({
     .min(1, 'Minimum signal strength is 1')
     .max(5, 'Maximum signal strength is 5')
     .describe('Minimum signal strength score (1-5) required to trade'),
+  minSignalScore: z.number()
+    .min(0, 'Minimum signal score must be >= 0')
+    .max(1, 'Minimum signal score must be <= 1')
+    .optional()
+    .describe('Minimum composite signal score [0,1]; undefined = no minimum'),
   allowedSignalTypes: z.array(z.string().min(1).max(50))
     .describe('Allowed signal types (empty = accept all)'),
   tokenFilterMode: z.enum(['none', 'blacklist', 'whitelist'], {
@@ -395,6 +400,10 @@ export const portfolioConfigSchema = z.object({
     .max(1, 'Replacement margin must be <= 1')
     .default(0.10),
   requireScoreForReplacement: z.boolean().default(true),
+  positionDecayHours: z.number()
+    .min(0.5, 'Position decay hours must be >= 0.5')
+    .max(24, 'Position decay hours must be <= 24')
+    .default(4),
 }).strip();
 
 /**

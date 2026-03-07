@@ -11,6 +11,9 @@ import type { AgentTradingConfig, AutoTradeConfig, DCAConfig, PortfolioConfig, S
 /** Hard minimum position size in SOL — prevents dust-sized trades. */
 export const MINIMUM_POSITION_SIZE_SOL = 0.05;
 
+/** Maximum open positions per agent — shared constant to prevent duplication. */
+export const MAX_OPEN_POSITIONS = 25;
+
 /**
  * Common signal types for dropdown selection
  * These are predefined options available in the UI
@@ -106,6 +109,7 @@ export const DEFAULT_AUTO_TRADE_CONFIG: AutoTradeConfig = {
 export const DEFAULT_PORTFOLIO_CONFIG: PortfolioConfig = {
   replacementMargin: 0.10,
   requireScoreForReplacement: true,
+  positionDecayHours: 4,
 };
 
 /**

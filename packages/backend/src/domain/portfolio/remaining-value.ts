@@ -26,19 +26,21 @@ export interface PositionForScoring {
  * Compute the remaining value score for a position.
  *
  * Formula:
- *   rv = entryScore × timeFactor × (1 − consumed)
+ *   rv = entryScore × timeFactor × (1 − upConsumed) × (1 − lossRatio)
  *
  * Where:
  *   entryScore  = signalScore ?? 0.5
- *   timeFactor  = max(0, 1 − hoursOpen / 6)   (decays to 0 at 6 hours)
- *   consumed    = clamp(unrealizedPnlPct / expectedMove, 0, 1)
+ *   timeFactor  = max(0, 1 − hoursOpen / positionDecayHours)
+ *   pnlRatio    = unrealizedPnlPct / expectedMove
+ *   upConsumed  = clamp(pnlRatio, 0, 1)   — winners decay toward 0 as gain is captured
+ *   lossRatio   = clamp(-pnlRatio, 0, 1)  — losers are penalised toward 0
  *
  * Legacy positions (signalScore = null, requireScoreForReplacement = true)
  * always return 1.0 so they are never candidates for replacement.
  */
 export function remainingValue(
   position: PositionForScoring,
-  config: { requireScoreForReplacement: boolean },
+  config: { requireScoreForReplacement: boolean; positionDecayHours: number },
   now: Date,
 ): number {
   if (config.requireScoreForReplacement && position.signalScore == null) {
@@ -48,7 +50,7 @@ export function remainingValue(
   const entryScore = position.signalScore ?? 0.5;
 
   const hoursOpen = (now.getTime() - position.openedAt.getTime()) / 3_600_000;
-  const timeFactor = Math.max(0.0, 1.0 - hoursOpen / 6.0);
+  const timeFactor = Math.max(0.0, 1.0 - hoursOpen / config.positionDecayHours);
 
   const expectedMove =
     position.expectedMovePct != null
@@ -60,10 +62,9 @@ export function remainingValue(
       ? ((position.currentPrice - position.entryPrice) / position.entryPrice) * 100
       : 0;
 
-  const consumed =
-    expectedMove > 0
-      ? Math.min(Math.max(unrealizedPnlPct / expectedMove, 0.0), 1.0)
-      : 0.0;
+  const pnlRatio = expectedMove > 0 ? unrealizedPnlPct / expectedMove : 0;
+  const upConsumed = Math.min(Math.max(pnlRatio, 0.0), 1.0);
+  const lossRatio = Math.min(Math.max(-pnlRatio, 0.0), 1.0);
 
-  return entryScore * timeFactor * (1.0 - consumed);
+  return entryScore * timeFactor * (1.0 - upConsumed) * (1.0 - lossRatio);
 }

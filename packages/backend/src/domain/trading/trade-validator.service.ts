@@ -15,6 +15,7 @@ import { redisPositionService } from '@/infrastructure/cache/redis-position-serv
 import { walletStore } from '@/infrastructure/wallets/index.js';
 import { validateWalletBelongsToAgent } from '../../api/v1/wallets/helpers.js';
 import type { AgentTradingConfig } from '@nexgent/shared';
+import { MAX_OPEN_POSITIONS } from '@nexgent/shared';
 
 /**
  * Trade validator error
@@ -62,9 +63,6 @@ class TradeValidator {
   /** SOL token address (native SOL mint) */
   private readonly SOL_TOKEN_ADDRESS = 'So11111111111111111111111111111111111111112';
   
-  /** Maximum number of open positions allowed per agent */
-  private readonly MAX_OPEN_POSITIONS = 25;
-
   /**
    * Validate trade execution
    * 
@@ -223,13 +221,13 @@ class TradeValidator {
 
     // 8.5. Check maximum open positions limit
     const openPositionCount = await this.getOpenPositionCount(agentId);
-    if (openPositionCount >= this.MAX_OPEN_POSITIONS) {
+    if (openPositionCount >= MAX_OPEN_POSITIONS) {
       throw new TradeValidatorError(
-        `Agent has reached maximum limit of ${this.MAX_OPEN_POSITIONS} open positions`,
+        `Agent has reached maximum limit of ${MAX_OPEN_POSITIONS} open positions`,
         'MAX_POSITIONS_EXCEEDED',
         {
           currentCount: openPositionCount,
-          maxPositions: this.MAX_OPEN_POSITIONS,
+          maxPositions: MAX_OPEN_POSITIONS,
         }
       );
     }

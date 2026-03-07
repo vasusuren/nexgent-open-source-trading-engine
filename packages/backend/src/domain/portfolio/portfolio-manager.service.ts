@@ -19,16 +19,13 @@ import { priceFeedService } from '@/infrastructure/external/dexscreener/index.js
 import { configService } from '@/domain/trading/config-service.js';
 import { redisBalanceService } from '@/infrastructure/cache/redis-balance-service.js';
 import { redisPositionService } from '@/infrastructure/cache/redis-position-service.js';
-import { DEFAULT_PORTFOLIO_CONFIG } from '@nexgent/shared';
+import { DEFAULT_PORTFOLIO_CONFIG, MAX_OPEN_POSITIONS } from '@nexgent/shared';
 import { remainingValue } from './remaining-value.js';
 import type { PositionForScoring } from './remaining-value.js';
 import logger from '@/infrastructure/logging/logger.js';
 
 /** SOL native mint address (matches TradeValidator) */
 const SOL_MINT_ADDRESS = 'So11111111111111111111111111111111111111112';
-
-/** Maximum open positions per agent (matches TradeValidator.MAX_OPEN_POSITIONS) */
-const MAX_OPEN_POSITIONS = 25;
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -205,7 +202,10 @@ class PortfolioManagerService {
         openedAt: p.createdAt,
       };
 
-      const rv = remainingValue(pos, portfolioConfig, now);
+      const rv = remainingValue(pos, {
+        requireScoreForReplacement: portfolioConfig.requireScoreForReplacement,
+        positionDecayHours: portfolioConfig.positionDecayHours ?? DEFAULT_PORTFOLIO_CONFIG.positionDecayHours,
+      }, now);
       scored.push({ id: p.id, symbol: p.tokenSymbol, rv });
     }
 

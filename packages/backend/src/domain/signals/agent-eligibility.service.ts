@@ -99,9 +99,17 @@ export class AgentEligibilityService {
       return false;
     }
 
-    // 2. Check Signal Score
+    // 2. Check Signal Score (coarse integer gate)
     if (signal.signalStrength < config.signals.minScore) {
       reasons.push(`Signal strength ${signal.signalStrength} < minScore ${config.signals.minScore}`);
+    }
+
+    // 2b. Check composite signal score (fine-grained float gate)
+    const signalScore = (signal as unknown as Record<string, unknown>).signalScore;
+    if (config.signals.minSignalScore != null && signalScore != null) {
+      if (Number(signalScore) < config.signals.minSignalScore) {
+        reasons.push(`signalScore ${Number(signalScore).toFixed(3)} < minSignalScore ${config.signals.minSignalScore}`);
+      }
     }
 
     // 3. Check Signal Type Filter (if configured)

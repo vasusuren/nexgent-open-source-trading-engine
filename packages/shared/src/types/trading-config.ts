@@ -142,6 +142,12 @@ export type TokenFilterMode = 'none' | 'blacklist' | 'whitelist';
 export interface SignalConfig {
   /** Minimum signal strength score (1-5) required to trade */
   minScore: number;
+
+  /**
+   * Minimum composite signal score [0,1] required to trade.
+   * Fine-grained gate alongside minScore. Undefined = no minimum.
+   */
+  minSignalScore?: number;
   
   /** 
    * Allowed signal types (e.g., ['buy', 'Hypersurge'])
@@ -413,6 +419,12 @@ export interface PortfolioConfig {
    * Flip to false once all positions carry a score. Default true.
    */
   requireScoreForReplacement: boolean;
+
+  /**
+   * Hours after which a position's time factor decays to zero.
+   * Shorter = faster turnover. Default 4 (suits meme coin move windows).
+   */
+  positionDecayHours: number;
 }
 
 /**

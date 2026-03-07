@@ -6,7 +6,7 @@
  * configuration is reset.
  */
 
-import type { AgentTradingConfig, AutoTradeConfig, DCAConfig, SignalConfig, TakeProfitConfig } from '../types/trading-config.js';
+import type { AgentTradingConfig, AutoTradeConfig, DCAConfig, PortfolioConfig, SignalConfig, TakeProfitConfig } from '../types/trading-config.js';
 
 /** Hard minimum position size in SOL — prevents dust-sized trades. */
 export const MINIMUM_POSITION_SIZE_SOL = 0.05;
@@ -98,6 +98,17 @@ export const DEFAULT_AUTO_TRADE_CONFIG: AutoTradeConfig = {
 };
 
 /**
+ * Default portfolio management configuration
+ *
+ * Legacy positions (null signalScore) are treated as maximum value until
+ * requireScoreForReplacement is flipped to false.
+ */
+export const DEFAULT_PORTFOLIO_CONFIG: PortfolioConfig = {
+  replacementMargin: 0.10,
+  requireScoreForReplacement: true,
+};
+
+/**
  * Default trading configuration
  * 
  * Based on production values from the original hardcoded configuration.
@@ -148,5 +159,6 @@ export const DEFAULT_TRADING_CONFIG: AgentTradingConfig = {
   dca: DEFAULT_DCA_CONFIG,
   takeProfit: DEFAULT_TAKE_PROFIT_CONFIG,
   autoTrade: DEFAULT_AUTO_TRADE_CONFIG,
+  portfolio: DEFAULT_PORTFOLIO_CONFIG,
 };
 

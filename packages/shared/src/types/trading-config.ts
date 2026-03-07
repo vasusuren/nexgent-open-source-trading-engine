@@ -398,6 +398,24 @@ export interface AutoTradeConfig {
 }
 
 /**
+ * Portfolio management configuration
+ */
+export interface PortfolioConfig {
+  /**
+   * Margin by which incoming signal score must exceed the weakest position's
+   * remaining value before replacement is triggered. Default 0.10.
+   */
+  replacementMargin: number;
+
+  /**
+   * When true, positions with null signalScore are treated as maximum value
+   * (rv = 1.0) and are never candidates for replacement.
+   * Flip to false once all positions carry a score. Default true.
+   */
+  requireScoreForReplacement: boolean;
+}
+
+/**
  * Complete agent trading configuration
  */
 export interface AgentTradingConfig {
@@ -424,5 +442,8 @@ export interface AgentTradingConfig {
 
   /** Auto trade: immediately re-buy when an enabled token position closes */
   autoTrade?: AutoTradeConfig;
+
+  /** Portfolio management: capital-aware entry decisions and replacement logic */
+  portfolio?: PortfolioConfig;
 }
 

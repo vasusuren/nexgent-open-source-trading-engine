@@ -45,6 +45,8 @@ type PositionLike = {
   realizedProfitSol?: Decimal | number;
   tpBatchStartLevel?: number;
   totalTakeProfitLevels?: number | null;
+  signalScore?: number | null;
+  expectedMovePct?: number | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -257,7 +259,11 @@ class PositionService {
     purchaseAmount: number,
     tx?: Prisma.TransactionClient,
     /** When provided (e.g. total SOL debited including fees from Jupiter), use for totalInvestedSol instead of purchasePrice * purchaseAmount */
-    totalInvestedSolOverride?: number
+    totalInvestedSolOverride?: number,
+    /** B7: Composite quality score [0,1] from signal engine */
+    signalScore?: number | null,
+    /** B7: Magnitude regressor output in % from signal engine */
+    expectedMovePct?: number | null
   ): Promise<OpenPosition> {
     // Verify transaction exists (use transaction context if provided)
     const transaction = await this.transactionRepo.findById(transactionId, tx);
@@ -322,6 +328,9 @@ class PositionService {
       currentStopLossPercentage: null,
       peakPrice: null,
       lastStopLossUpdate: null,
+      // Signal metrics (B7)
+      signalScore: signalScore ?? null,
+      expectedMovePct: expectedMovePct ?? null,
     }, tx);
 
     // Update Redis cache (only if not in transaction - if in transaction, caller updates after commit)
@@ -522,6 +531,9 @@ class PositionService {
     realizedProfitSol?: Decimal | number;
     tpBatchStartLevel?: number;
     totalTakeProfitLevels?: number | null;
+    // Signal metrics (B7)
+    signalScore?: number | null;
+    expectedMovePct?: number | null;
     createdAt: Date;
     updatedAt: Date;
   }): OpenPosition {
@@ -557,6 +569,9 @@ class PositionService {
       realizedProfitSol: this.toNumber(position.realizedProfitSol) ?? 0,
       tpBatchStartLevel: position.tpBatchStartLevel ?? 0,
       totalTakeProfitLevels: position.totalTakeProfitLevels ?? null,
+      // Signal metrics (B7)
+      signalScore: position.signalScore ?? null,
+      expectedMovePct: position.expectedMovePct ?? null,
       // Timestamps
       createdAt: position.createdAt,
       updatedAt: position.updatedAt,

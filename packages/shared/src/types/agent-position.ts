@@ -103,11 +103,19 @@ export interface OpenPosition {
   /** Total TP levels including appended batches from DCA (null = use config.levels.length) */
   totalTakeProfitLevels: number | null;
   
+  // Signal metrics (B7: stored at entry time from signal engine)
+
+  /** Composite quality score [0,1] from signal engine; null for legacy positions */
+  signalScore: number | null;
+
+  /** Magnitude regressor output in % (e.g. 18.5); null for legacy positions */
+  expectedMovePct: number | null;
+
   // Timestamps
-  
+
   /** When position was opened */
   createdAt: Date;
-  
+
   /** Last update timestamp */
   updatedAt: Date;
 }

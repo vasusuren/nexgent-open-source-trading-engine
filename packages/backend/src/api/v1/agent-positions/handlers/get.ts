@@ -271,6 +271,10 @@ export async function getAgentPositions(req: AuthenticatedRequest, res: Response
             lastDcaTime: position.lastDcaTime,
           },
           
+          // Signal metrics (B8)
+          signalScore: position.signalScore ?? null,
+          expectedMovePct: position.expectedMovePct ?? null,
+
           // Timestamps
           createdAt: position.createdAt,
           updatedAt: position.updatedAt,

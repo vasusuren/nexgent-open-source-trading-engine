@@ -13,6 +13,17 @@ export interface CreateTradingSignalRequest {
   activationReason?: string;
   signalStrength: number; // 1-5
   source?: string;
+  /** B3: Capital scaling factor (0.25–4.0); multiplied against base position size */
+  positionSizeMultiplier?: number;
+  /** B6: Composite quality score [0,1] from signal engine */
+  signalScore?: number;
+  /** B6: Score breakdown; expectedMovePct is extracted and persisted */
+  scoreComponents?: {
+    s1Pct?: number;
+    s2Slope?: number;
+    qualityTier?: number;
+    expectedMovePct?: number;
+  };
 }
 
 /**

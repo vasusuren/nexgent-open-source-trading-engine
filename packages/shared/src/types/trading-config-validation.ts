@@ -387,8 +387,19 @@ export const autoTradeSchema = z.object({
 });
 
 /**
+ * Portfolio management configuration validation schema
+ */
+export const portfolioConfigSchema = z.object({
+  replacementMargin: z.number()
+    .min(0, 'Replacement margin must be >= 0')
+    .max(1, 'Replacement margin must be <= 1')
+    .default(0.10),
+  requireScoreForReplacement: z.boolean().default(true),
+}).strip();
+
+/**
  * Complete agent trading configuration validation schema
- * 
+ *
  * Uses .strip() to automatically remove unknown fields (like old continuousTrailing).
  * DCA and Take-Profit can both be enabled (append-levels model).
  */
@@ -401,6 +412,7 @@ export const agentTradingConfigSchema = z.object({
   dca: dcaSchema,
   takeProfit: takeProfitConfigSchema,
   autoTrade: autoTradeSchema.optional(),
+  portfolio: portfolioConfigSchema.optional(),
 }).strip();
 
 /**

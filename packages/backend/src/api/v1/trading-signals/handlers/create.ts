@@ -105,13 +105,14 @@ export async function createTradingSignal(req: AuthenticatedRequest, res: Respon
       }
     }
 
-    // Validate positionSizeMultiplier if provided (B3)
+    // Validate positionSizeMultiplier if provided
+    // Range [0, 1]: used as proportion in size = min + mult × (max - min)
     if (positionSizeMultiplier !== undefined && positionSizeMultiplier !== null) {
       if (typeof positionSizeMultiplier !== 'number' || !isFinite(positionSizeMultiplier)) {
         return res.status(400).json({ error: 'positionSizeMultiplier must be a number' });
       }
-      if (positionSizeMultiplier < 0.25 || positionSizeMultiplier > 4.0) {
-        return res.status(400).json({ error: 'positionSizeMultiplier must be between 0.25 and 4.0' });
+      if (positionSizeMultiplier < 0 || positionSizeMultiplier > 1.0) {
+        return res.status(400).json({ error: 'positionSizeMultiplier must be between 0 and 1' });
       }
     }
 

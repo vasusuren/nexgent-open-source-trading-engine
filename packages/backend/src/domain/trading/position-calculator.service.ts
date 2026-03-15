@@ -127,14 +127,19 @@ class PositionCalculator {
       // Adjust position size to leave minimum balance
       const adjustedSize = currentSolBalance - minimumBalance;
       
-      if (adjustedSize <= 0) {
+      // Floating-point edge case: balance may be only epsilon above minimumBalance,
+      // producing an adjustedSize too small to represent as a lamport (1e-9 SOL).
+      // Treat sub-lamport adjustedSize as insufficient balance.
+      const MIN_LAMPORTS = 10_000; // 0.00001 SOL — practical trade floor
+      if (adjustedSize <= 0 || Math.floor(adjustedSize * 1e9) < MIN_LAMPORTS) {
         throw new PositionCalculatorError(
-          `Cannot maintain minimum balance: ${minimumBalance} SOL`,
+          `Cannot maintain minimum balance: ${minimumBalance} SOL (adjusted size ${adjustedSize.toExponential(3)} SOL too small)`,
           'INSUFFICIENT_BALANCE_FOR_MINIMUM',
           {
             currentBalance: currentSolBalance,
             minimumBalance,
             requestedSize: positionSize,
+            adjustedSize,
           }
         );
       }

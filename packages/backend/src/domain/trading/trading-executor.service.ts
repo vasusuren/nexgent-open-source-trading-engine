@@ -344,6 +344,16 @@ class TradingExecutor {
       // - Get token decimals (needed for swap)
       // - Get swap quote (independent of price/decimals)
       const positionSizeLamports = Math.floor(positionSize * 1e9);
+      // Guard: floating-point rounding can produce 0 lamports when balance is
+      // extremely close to minimumAgentBalance.  10 000 lamports ≈ 0.00001 SOL.
+      const MIN_LAMPORTS = 10_000;
+      if (positionSizeLamports < MIN_LAMPORTS) {
+        throw new TradingExecutorError(
+          `Position size too small after minimum-balance adjustment (${positionSizeLamports} lamports < ${MIN_LAMPORTS})`,
+          'POSITION_SIZE_TOO_SMALL',
+          { positionSize, positionSizeLamports, currentBalance: validation.currentSolBalance }
+        );
+      }
 
       // Parallelize: Get token metadata (decimals) + Get swap quote
       // These are independent and can be done simultaneously

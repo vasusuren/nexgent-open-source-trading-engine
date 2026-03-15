@@ -828,6 +828,12 @@ class PriceUpdateManager {
       return false;
     }
 
+    // Reject stale or missing price data — a zero price would produce a false
+    // negative ROI and incorrectly close a profitable position.
+    if (!currentPrice || currentPrice <= 0) {
+      return false;
+    }
+
     const hoursOpen = (Date.now() - position.createdAt.getTime()) / 3_600_000;
 
     if (hoursOpen < portfolioConfig.positionDecayHours) {

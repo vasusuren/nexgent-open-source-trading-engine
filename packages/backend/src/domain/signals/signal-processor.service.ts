@@ -152,14 +152,17 @@ export class SignalProcessor {
           signalId: signal.id,
           agentId,
           executionId,
-          positionIdToClose: decision.positionIdToClose,
-          positionSymbol: decision.positionSymbol,
-        }, 'Portfolio full: replacing weakest position with incoming signal');
-        await tradingExecutor.executeSale({
-          agentId,
-          positionId: decision.positionIdToClose,
-          reason: 'replaced_by_higher_score_signal',
-        });
+          positionsToClose: decision.positionsToClose,
+          count: decision.positionsToClose.length,
+        }, `Portfolio replacing ${decision.positionsToClose.length} position(s) with incoming signal`);
+        // Eject each position sequentially (capital lock may require multiple)
+        for (const pos of decision.positionsToClose) {
+          await tradingExecutor.executeSale({
+            agentId,
+            positionId: pos.id,
+            reason: 'replaced_by_higher_score_signal',
+          });
+        }
         // Fall through — executePurchase opens the new position
       }
 

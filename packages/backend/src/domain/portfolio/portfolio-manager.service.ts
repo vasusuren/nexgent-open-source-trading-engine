@@ -33,7 +33,7 @@ const SOL_MINT_ADDRESS = 'So11111111111111111111111111111111111111112';
 
 export type TradeDecision =
   | { action: 'proceed' }
-  | { action: 'replace'; positionIdToClose: string; positionSymbol: string }
+  | { action: 'replace'; positionsToClose: Array<{ id: string; symbol: string }> }
   | { action: 'suppress'; reason: string; weakestRv?: number; incomingScore?: number };
 
 // ---------------------------------------------------------------------------
@@ -138,9 +138,13 @@ class PortfolioManagerService {
     incomingExpectedMovePct: number,
     now: Date,
     bypassThreshold: boolean,
+    /** Current SOL balance — used in capital-lock path to determine how many positions to eject */
+    currentSolBalance?: number,
+    /** Minimum SOL balance that must remain after ejections + new purchase */
+    minimumBalance?: number,
   ): Promise<{
     shouldReplace: boolean;
-    positionToClose?: { id: string; symbol: string; rv: number };
+    positionsToClose?: Array<{ id: string; symbol: string; rv: number }>;
     reason: string;
     weakestRv?: number;
   }> {
@@ -155,6 +159,7 @@ class PortfolioManagerService {
         tokenAddress: true,
         tokenSymbol: true,
         purchasePrice: true,
+        purchaseAmount: true,
         signalScore: true,
         expectedMovePct: true,
         createdAt: true,
@@ -184,15 +189,23 @@ class PortfolioManagerService {
       return 25; // fallback: 25% gain as tp3 proxy
     })();
 
-    // Score each position
-    const scored: Array<{ id: string; symbol: string; rv: number }> = [];
+    // Score each position; also estimate current SOL value for capital-lock ejection sizing
+    const scored: Array<{ id: string; symbol: string; rv: number; estimatedSolValue: number }> = [];
     for (const p of dbPositions) {
       const entryPrice = typeof p.purchasePrice === 'object' && 'toNumber' in p.purchasePrice
         ? (p.purchasePrice as unknown as { toNumber: () => number }).toNumber()
         : Number(p.purchasePrice);
 
+      const purchaseAmountSol = typeof p.purchaseAmount === 'object' && 'toNumber' in p.purchaseAmount
+        ? (p.purchaseAmount as unknown as { toNumber: () => number }).toNumber()
+        : Number(p.purchaseAmount);
+
       const currentPrice = priceMap.get(p.tokenAddress.toLowerCase()) ?? entryPrice;
       const tp3Price = entryPrice * (1 + tp3TargetPercent / 100);
+
+      // Estimated current SOL value: scale purchase cost by price ratio
+      const priceRatio = entryPrice > 0 ? currentPrice / entryPrice : 1;
+      const estimatedSolValue = purchaseAmountSol * priceRatio;
 
       const pos: PositionForScoring = {
         id: p.id,
@@ -209,18 +222,50 @@ class PortfolioManagerService {
         requireScoreForReplacement: portfolioConfig.requireScoreForReplacement,
         positionDecayHours: portfolioConfig.positionDecayHours ?? DEFAULT_PORTFOLIO_CONFIG.positionDecayHours,
       }, now);
-      scored.push({ id: p.id, symbol: p.tokenSymbol, rv });
+      scored.push({ id: p.id, symbol: p.tokenSymbol, rv, estimatedSolValue });
     }
 
-    // Find weakest
-    const weakest = scored.reduce((a, b) => (a.rv < b.rv ? a : b));
+    // Sort ascending by RV — weakest first
+    scored.sort((a, b) => a.rv - b.rv);
 
-    // Capital-lock path: force-replace weakest regardless of threshold
+    const weakest = scored[0];
+
+    // Capital-lock path: eject the minimum number of positions (weakest first, each
+    // must have rv < incomingExpectedMovePct) until enough SOL is freed to fund a new trade.
     if (bypassThreshold) {
+      // Positions eligible to eject: incoming must be stronger (rv < incoming)
+      const eligible = scored.filter(p => incomingExpectedMovePct > p.rv);
+
+      if (eligible.length === 0) {
+        return {
+          shouldReplace: false,
+          reason: `capital_locked_but_all_positions_stronger_than_incoming_${incomingExpectedMovePct.toFixed(2)}pct`,
+          weakestRv: weakest.rv,
+        };
+      }
+
+      // How much headroom do we need above the minimum balance?
+      // Use the small-tier minimum position size as the floor (0.1 SOL default).
+      const smallTierMin = config.positionCalculator?.positionSizes?.small?.min ?? 0.1;
+      const minRequired = (minimumBalance ?? 0) + smallTierMin;
+      const available = currentSolBalance ?? 0;
+
+      const toEject: Array<{ id: string; symbol: string; rv: number }> = [];
+      let projectedBalance = available;
+
+      for (const p of eligible) {
+        if (projectedBalance >= minRequired) break;
+        toEject.push({ id: p.id, symbol: p.symbol, rv: p.rv });
+        projectedBalance += p.estimatedSolValue;
+      }
+
+      // Even if not enough (all eligible positions are tiny), still eject what we can
+      if (toEject.length === 0) toEject.push({ id: eligible[0].id, symbol: eligible[0].symbol, rv: eligible[0].rv });
+
       return {
         shouldReplace: true,
-        positionToClose: weakest,
-        reason: `capital_lock_force_replace_weakest_rv_${weakest.rv.toFixed(3)}`,
+        positionsToClose: toEject,
+        reason: `capital_lock_ejecting_${toEject.length}_position(s)_weakest_rv_${weakest.rv.toFixed(3)}`,
         weakestRv: weakest.rv,
       };
     }
@@ -229,7 +274,7 @@ class PortfolioManagerService {
     if (incomingExpectedMovePct > weakest.rv * (1 + portfolioConfig.replacementMargin)) {
       return {
         shouldReplace: true,
-        positionToClose: weakest,
+        positionsToClose: [{ id: weakest.id, symbol: weakest.symbol, rv: weakest.rv }],
         reason: `incoming_${incomingExpectedMovePct.toFixed(2)}pct_beats_weakest_rv_${weakest.rv.toFixed(2)}pct`,
         weakestRv: weakest.rv,
       };
@@ -305,13 +350,14 @@ class PortfolioManagerService {
         incomingExpectedMovePct,
         now,
         true, // bypassThreshold
+        solBalance,
+        minimumBalance,
       );
 
-      if (replacement.shouldReplace && replacement.positionToClose) {
+      if (replacement.shouldReplace && replacement.positionsToClose?.length) {
         return {
           action: 'replace',
-          positionIdToClose: replacement.positionToClose.id,
-          positionSymbol: replacement.positionToClose.symbol,
+          positionsToClose: replacement.positionsToClose,
         };
       }
 
@@ -337,11 +383,10 @@ class PortfolioManagerService {
         false, // threshold-gated
       );
 
-      if (replacement.shouldReplace && replacement.positionToClose) {
+      if (replacement.shouldReplace && replacement.positionsToClose?.length) {
         return {
           action: 'replace',
-          positionIdToClose: replacement.positionToClose.id,
-          positionSymbol: replacement.positionToClose.symbol,
+          positionsToClose: replacement.positionsToClose,
         };
       }
 

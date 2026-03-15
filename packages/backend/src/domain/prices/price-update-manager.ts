@@ -72,6 +72,12 @@ class PriceUpdateManager {
   private readonly MARKET_CAP_GUARD_TTL_MS = 60_000; // 60 seconds
   private marketCapGuardRejectCache: Map<string, number> = new Map();
 
+  // Tracks consecutive loss ticks per position for portfolio-decay close.
+  // Position must be in a loss for DECAY_LOSS_TICKS_REQUIRED consecutive ticks
+  // before the close fires — filters out transient price-feed spikes.
+  private readonly DECAY_LOSS_TICKS_REQUIRED = 3;
+  private readonly decayLossTicks = new Map<string, number>(); // positionId -> count
+
   // Reference to WebSocket server (set during initialization)
   private wsServer: {
     broadcastPriceUpdate: (agentId: string, tokenAddress: string, price: number, priceUsd: number) => void;
@@ -844,10 +850,32 @@ class PriceUpdateManager {
       ? (currentPrice - position.purchasePrice) / position.purchasePrice
       : 0;
 
-    // Only close losing positions — let profitable ones run
+    // Only close losing positions — let profitable ones run.
+    // Also reset the loss-tick counter if the position has recovered.
     if (currentRoi >= 0) {
+      this.decayLossTicks.delete(position.id);
       return false;
     }
+
+    // Require DECAY_LOSS_TICKS_REQUIRED consecutive loss ticks before closing.
+    // This filters out transient price-feed spikes (e.g. Pyth SOL/USD momentary errors)
+    // that would otherwise cause a profitable position to appear briefly in loss.
+    const lossTicks = (this.decayLossTicks.get(position.id) ?? 0) + 1;
+    this.decayLossTicks.set(position.id, lossTicks);
+
+    if (lossTicks < this.DECAY_LOSS_TICKS_REQUIRED) {
+      logger.debug({
+        positionId: position.id,
+        tokenSymbol: position.tokenSymbol,
+        currentRoiPct: (currentRoi * 100).toFixed(2),
+        lossTicks,
+        required: this.DECAY_LOSS_TICKS_REQUIRED,
+      }, 'Portfolio decay: loss tick recorded, not yet at threshold');
+      return false;
+    }
+
+    // Threshold reached — clear counter and proceed with close
+    this.decayLossTicks.delete(position.id);
 
     staleTradeTriggerCount.inc({ agent_id: position.agentId, token_address: position.tokenAddress });
 

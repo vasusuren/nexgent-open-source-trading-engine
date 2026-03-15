@@ -39,6 +39,8 @@ out/
 **/.turbo/
 .cache/
 **/.cache/
+signal_ana_extracted/
+.claude/
 
 # -----------------------------------------------------------------------------
 # TypeScript
@@ -109,3 +111,5 @@ ehthumbs.db
 docs/
 # Local planning notes (not for the repo)
 plans/
+
+*.zip

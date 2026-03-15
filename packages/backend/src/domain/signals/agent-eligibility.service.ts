@@ -112,6 +112,14 @@ export class AgentEligibilityService {
       }
     }
 
+    // 2c. Check minimum expected move percentage
+    const expectedMovePct = (signal as unknown as Record<string, unknown>).expectedMovePct;
+    if (config.signals.minExpectedMove != null && config.signals.minExpectedMove > 0) {
+      if (expectedMovePct == null || Number(expectedMovePct) < config.signals.minExpectedMove) {
+        reasons.push(`expectedMovePct ${expectedMovePct} < minExpectedMove ${config.signals.minExpectedMove}`);
+      }
+    }
+
     // 3. Check Signal Type Filter (if configured)
     if (config.signals.allowedSignalTypes && config.signals.allowedSignalTypes.length > 0) {
       if (!config.signals.allowedSignalTypes.includes(signal.signalType)) {

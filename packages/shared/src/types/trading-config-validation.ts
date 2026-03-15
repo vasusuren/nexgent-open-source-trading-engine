@@ -177,6 +177,10 @@ export const signalConfigSchema = z.object({
     .max(1, 'Minimum signal score must be <= 1')
     .optional()
     .describe('Minimum composite signal score [0,1]; undefined = no minimum'),
+  minExpectedMove: z.number()
+    .min(0, 'Minimum expected move must be >= 0')
+    .optional()
+    .describe('Minimum expected move percentage; 0 or undefined = no minimum'),
   allowedSignalTypes: z.array(z.string().min(1).max(50))
     .describe('Allowed signal types (empty = accept all)'),
   tokenFilterMode: z.enum(['none', 'blacklist', 'whitelist'], {

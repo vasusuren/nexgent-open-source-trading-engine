@@ -44,14 +44,22 @@ export interface PositionCalculationResult {
 class PositionCalculator {
   /**
    * Calculate position size for a trade
-   * 
+   *
    * Determines category based on SOL balance, applies randomization if enabled,
    * and ensures constraints are met (maxPurchasePerToken, minimumAgentBalance).
-   * 
+   *
+   * When `sizeMultiplier` is provided the size is computed deterministically as:
+   *   positionSize = min + sizeMultiplier × (max - min)
+   * where [min, max] is the range for the balance category.
+   * This bypasses randomization entirely (the random/max path is skipped).
+   * All clamping (maxPurchasePerToken, minimumAgentBalance) still applies.
+   *
    * @param agentId - Agent ID
    * @param walletAddress - Wallet address
    * @param currentSolBalance - Current SOL balance (as number)
    * @param config - Trading configuration (optional, will load if not provided)
+   * @param sizeMultiplier - Optional deterministic multiplier in [0, 1].
+   *   When provided: size = min + sizeMultiplier × (max − min).
    * @returns Calculated position size and metadata
    * @throws PositionCalculatorError if balance is insufficient or config invalid
    */
@@ -59,7 +67,8 @@ class PositionCalculator {
     agentId: string,
     walletAddress: string,
     currentSolBalance: number,
-    config?: AgentTradingConfig
+    config?: AgentTradingConfig,
+    sizeMultiplier?: number,
   ): Promise<PositionCalculationResult> {
     // Load config if not provided
     const tradingConfig = config || await configService.loadAgentConfig(agentId);
@@ -92,7 +101,11 @@ class PositionCalculator {
 
     // Calculate base position size
     let positionSize: number;
-    if (tradingConfig.positionCalculator.randomization.enabled) {
+    if (sizeMultiplier !== undefined) {
+      // Deterministic: linear interpolation between min and max
+      const clampedMultiplier = Math.min(Math.max(sizeMultiplier, 0.0), 1.0);
+      positionSize = sizeRange.min + clampedMultiplier * (sizeRange.max - sizeRange.min);
+    } else if (tradingConfig.positionCalculator.randomization.enabled) {
       // Randomize between min and max
       positionSize = this.randomizePositionSize(sizeRange.min, sizeRange.max);
     } else {

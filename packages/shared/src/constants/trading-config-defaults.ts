@@ -38,6 +38,7 @@ export const DEFAULT_SIGNAL_CONFIG: SignalConfig = {
   allowedSignalTypes: [],         // Empty = accept all signal types
   tokenFilterMode: 'none',        // Accept all tokens
   tokenList: [],                  // Empty token list
+  minExpectedMove: 0,             // 0 = no filter (backward compatible)
   // Token metrics (Jupiter): all undefined = no filter
   marketCapMin: undefined,
   marketCapMax: undefined,

@@ -124,17 +124,20 @@ class PortfolioManagerService {
 
   /**
    * Load all open positions for the agent, score each one, and compare against
-   * the incoming signal score.
+   * the incoming signal's expected move.
    *
    * Returns a replacement decision with the weakest position when the incoming
-   * signal beats it by more than `replacementMargin`.
+   * signal beats it by more than `replacementMargin` (proportional, in % units).
+   *
+   * @param bypassThreshold - When true (capital-lock path), always replace the
+   *   weakest position regardless of the margin threshold.
    */
   async evaluateReplacement(
     agentId: string,
     walletAddress: string,
-    incomingScore: number,
-    incomingExpectedMovePct: number | undefined,
+    incomingExpectedMovePct: number,
     now: Date,
+    bypassThreshold: boolean,
   ): Promise<{
     shouldReplace: boolean;
     positionToClose?: { id: string; symbol: string; rv: number };
@@ -212,18 +215,29 @@ class PortfolioManagerService {
     // Find weakest
     const weakest = scored.reduce((a, b) => (a.rv < b.rv ? a : b));
 
-    if (incomingScore > weakest.rv + portfolioConfig.replacementMargin) {
+    // Capital-lock path: force-replace weakest regardless of threshold
+    if (bypassThreshold) {
       return {
         shouldReplace: true,
         positionToClose: weakest,
-        reason: `incoming_score_${incomingScore.toFixed(3)}_beats_weakest_${weakest.rv.toFixed(3)}`,
+        reason: `capital_lock_force_replace_weakest_rv_${weakest.rv.toFixed(3)}`,
+        weakestRv: weakest.rv,
+      };
+    }
+
+    // Proportional threshold: incoming (in %) must beat weakest rv (in %) by replacementMargin factor
+    if (incomingExpectedMovePct > weakest.rv * (1 + portfolioConfig.replacementMargin)) {
+      return {
+        shouldReplace: true,
+        positionToClose: weakest,
+        reason: `incoming_${incomingExpectedMovePct.toFixed(2)}pct_beats_weakest_rv_${weakest.rv.toFixed(2)}pct`,
         weakestRv: weakest.rv,
       };
     }
 
     return {
       shouldReplace: false,
-      reason: `incoming_score_${incomingScore.toFixed(3)}_insufficient_vs_weakest_${weakest.rv.toFixed(3)}`,
+      reason: `incoming_${incomingExpectedMovePct.toFixed(2)}pct_insufficient_vs_weakest_rv_${weakest.rv.toFixed(2)}pct`,
       weakestRv: weakest.rv,
     };
   }
@@ -233,9 +247,14 @@ class PortfolioManagerService {
    *
    * Logic:
    *   1. Resolve wallet for agent.
-   *   2. If capacity is available → proceed.
-   *   3. If at capacity and no incoming score → suppress (cannot compare).
-   *   4. If at capacity and score available → evaluate replacement.
+   *   2. Fetch balance + position count in parallel.
+   *   3. If balance < minimumAgentBalance AND positions > 0:
+   *        capital locked → force-replace weakest (no threshold check).
+   *   4. If positionCount < MAX_OPEN_POSITIONS AND balance >= min:
+   *        proceed (open new slot — preferred over replacement).
+   *   5. If positionCount >= MAX_OPEN_POSITIONS:
+   *        threshold-gated replacement.
+   *   6. Otherwise → suppress.
    */
   async evaluateTrade(params: {
     agentId: string;
@@ -244,7 +263,7 @@ class PortfolioManagerService {
     incomingExpectedMovePct?: number;
     now: Date;
   }): Promise<TradeDecision> {
-    const { agentId, incomingScore, incomingExpectedMovePct, now } = params;
+    const { agentId, incomingExpectedMovePct, now } = params;
 
     // Resolve wallet address
     const walletAddress = params.walletAddress ?? await getDefaultWalletAddress(agentId);
@@ -252,42 +271,81 @@ class PortfolioManagerService {
       return { action: 'suppress', reason: 'no_wallet_found' };
     }
 
-    const canAccept = await this.canAcceptTrade(agentId, walletAddress);
+    const config = await configService.loadAgentConfig(agentId);
+    const minimumBalance = config.purchaseLimits.minimumAgentBalance;
 
-    if (canAccept) {
+    const [solBalance, positionCount] = await Promise.all([
+      getSolBalance(agentId, walletAddress),
+      getOpenPositionCount(agentId),
+    ]);
+
+    // Path 3: capital locked — force-replace weakest regardless of score
+    if (solBalance < minimumBalance && positionCount > 0) {
+      logger.info(
+        { agentId, solBalance, minimumBalance, positionCount },
+        'PortfolioManager: capital locked — evaluating force-replace',
+      );
+
+      if (incomingExpectedMovePct == null) {
+        return { action: 'suppress', reason: 'capital_locked_no_expected_move_for_comparison' };
+      }
+
+      const replacement = await this.evaluateReplacement(
+        agentId,
+        walletAddress,
+        incomingExpectedMovePct,
+        now,
+        true, // bypassThreshold
+      );
+
+      if (replacement.shouldReplace && replacement.positionToClose) {
+        return {
+          action: 'replace',
+          positionIdToClose: replacement.positionToClose.id,
+          positionSymbol: replacement.positionToClose.symbol,
+        };
+      }
+
+      return { action: 'suppress', reason: replacement.reason };
+    }
+
+    // Path 4: free slot available — open normally
+    if (positionCount < MAX_OPEN_POSITIONS && solBalance >= minimumBalance) {
       return { action: 'proceed' };
     }
 
-    // Capacity is full — check if replacement is warranted
-    if (incomingScore == null) {
+    // Path 5: at capacity — threshold-gated replacement
+    if (positionCount >= MAX_OPEN_POSITIONS) {
+      if (incomingExpectedMovePct == null) {
+        return { action: 'suppress', reason: 'capacity_full_no_expected_move_for_comparison' };
+      }
+
+      const replacement = await this.evaluateReplacement(
+        agentId,
+        walletAddress,
+        incomingExpectedMovePct,
+        now,
+        false, // threshold-gated
+      );
+
+      if (replacement.shouldReplace && replacement.positionToClose) {
+        return {
+          action: 'replace',
+          positionIdToClose: replacement.positionToClose.id,
+          positionSymbol: replacement.positionToClose.symbol,
+        };
+      }
+
       return {
         action: 'suppress',
-        reason: 'capital_full_no_score_for_comparison',
+        reason: replacement.reason,
+        weakestRv: replacement.weakestRv,
+        incomingScore: incomingExpectedMovePct,
       };
     }
 
-    const replacement = await this.evaluateReplacement(
-      agentId,
-      walletAddress,
-      incomingScore,
-      incomingExpectedMovePct,
-      now,
-    );
-
-    if (replacement.shouldReplace && replacement.positionToClose) {
-      return {
-        action: 'replace',
-        positionIdToClose: replacement.positionToClose.id,
-        positionSymbol: replacement.positionToClose.symbol,
-      };
-    }
-
-    return {
-      action: 'suppress',
-      reason: replacement.reason,
-      weakestRv: replacement.weakestRv,
-      incomingScore,
-    };
+    // Path 6: suppress (e.g. balance below min, no positions to replace)
+    return { action: 'suppress', reason: 'insufficient_balance_no_positions' };
   }
 }
 

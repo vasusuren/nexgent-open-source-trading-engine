@@ -16,6 +16,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/infrastructure/database/client.js';
 import { tradeValidator, TradeValidatorError } from './trade-validator.service.js';
+import { positionCalculator } from './position-calculator.service.js';
 import { priceFeedService } from '@/infrastructure/external/dexscreener/index.js';
 import { swapService, SOL_MINT_ADDRESS } from '@/infrastructure/external/jupiter/index.js';
 import { balanceService, BalanceError } from '../balances/index.js';
@@ -311,16 +312,19 @@ class TradingExecutor {
       }
 
       const config = validation.config;
-      // B4: Apply position size multiplier if provided, capped at maxPurchasePerToken
+      // D: When positionSizeMultiplier is provided, use deterministic sizing:
+      //    size = min + multiplier × (max - min) within the balance category range.
+      //    Clamping (maxPurchasePerToken, minimumAgentBalance) is enforced inside the calculator.
       let positionSize = validation.positionSize;
-      if (
-        request.positionSizeMultiplier !== undefined &&
-        request.positionSizeMultiplier !== 1.0
-      ) {
-        positionSize = Math.min(
-          positionSize * request.positionSizeMultiplier,
-          config.purchaseLimits.maxPurchasePerToken,
+      if (request.positionSizeMultiplier !== undefined) {
+        const deterministicResult = await positionCalculator.calculatePositionSize(
+          request.agentId,
+          walletAddress,
+          validation.currentSolBalance,
+          config,
+          request.positionSizeMultiplier,
         );
+        positionSize = deterministicResult.size;
       }
 
       // Step 2: Get wallet (needed for swap execution)

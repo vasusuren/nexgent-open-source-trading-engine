@@ -687,6 +687,13 @@ class PriceUpdateManager {
         return;
       }
 
+      // Evaluate portfolio-decay auto-close: close losing positions past signal window
+      const decayClosed = await this.evaluatePortfolioDecayForPosition(position, currentPrice, config);
+
+      if (decayClosed) {
+        return;
+      }
+
       // Evaluate DCA (only if stop loss and stale trade didn't trigger closure)
       // DCA buys more when price drops, so it makes sense to check after sell triggers
       // DCA and take-profit can run concurrently (append-levels model)
@@ -800,13 +807,89 @@ class PriceUpdateManager {
   }
 
   /**
+   * Evaluate portfolio-decay stale close for a single position.
+   *
+   * When a position has been open for at least `portfolio.positionDecayHours` hours
+   * AND is currently in a loss (currentRoi < 0), it is closed automatically.
+   * Positions in profit are left to stop-loss / take-profit to handle.
+   *
+   * @param position - Open position
+   * @param currentPrice - Current token price in SOL
+   * @param config - Agent's trading configuration
+   * @returns true if the position was closed, false otherwise
+   */
+  private async evaluatePortfolioDecayForPosition(
+    position: OpenPosition,
+    currentPrice: number,
+    config: AgentTradingConfig,
+  ): Promise<boolean> {
+    const portfolioConfig = config.portfolio;
+    if (!portfolioConfig?.positionDecayHours) {
+      return false;
+    }
+
+    const hoursOpen = (Date.now() - position.createdAt.getTime()) / 3_600_000;
+
+    if (hoursOpen < portfolioConfig.positionDecayHours) {
+      return false;
+    }
+
+    const currentRoi = position.purchasePrice > 0
+      ? (currentPrice - position.purchasePrice) / position.purchasePrice
+      : 0;
+
+    // Only close losing positions — let profitable ones run
+    if (currentRoi >= 0) {
+      return false;
+    }
+
+    staleTradeTriggerCount.inc({ agent_id: position.agentId, token_address: position.tokenAddress });
+
+    logger.info({
+      positionId: position.id,
+      agentId: position.agentId,
+      tokenAddress: position.tokenAddress,
+      tokenSymbol: position.tokenSymbol,
+      hoursOpen: hoursOpen.toFixed(2),
+      currentRoiPct: (currentRoi * 100).toFixed(2),
+      positionDecayHours: portfolioConfig.positionDecayHours,
+    }, 'Portfolio decay stale close triggered (position past signal window, in loss)');
+
+    try {
+      const result = await tradingExecutor.executeSale({
+        agentId: position.agentId,
+        positionId: position.id,
+        reason: 'stale_trade',
+      });
+
+      logger.info({
+        positionId: position.id,
+        agentId: position.agentId,
+        transactionId: result.transactionId,
+        profitLossSol: result.profitLossSol,
+        changePercent: result.changePercent,
+      }, 'Portfolio decay stale close completed');
+
+      return true;
+    } catch (error) {
+      errorCount.inc({ type: 'stale_trade', code: 'DECAY_SALE_FAILED' });
+      logger.error({
+        positionId: position.id,
+        agentId: position.agentId,
+        error: error instanceof Error ? error.message : String(error),
+      }, 'Portfolio decay stale close sale failed');
+      throw error;
+    }
+  }
+
+  /**
    * Evaluate take-profit for a single position and trigger partial sale if conditions are met
-   * 
+   *
    * Take-profit sells a portion of the position when price rises to configured levels.
    * Multiple levels may be triggered if price jumped significantly.
-   * 
+   *
    * DCA and take-profit can run concurrently (append-levels model).
-   * 
+   *
    * @param position - Open position
    * @param currentPrice - Current token price in SOL
    * @param config - Agent's trading configuration

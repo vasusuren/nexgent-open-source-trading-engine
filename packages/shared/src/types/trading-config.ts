@@ -148,6 +148,13 @@ export interface SignalConfig {
    * Fine-grained gate alongside minScore. Undefined = no minimum.
    */
   minSignalScore?: number;
+
+  /**
+   * Minimum expected move percentage required to trade.
+   * Signals with expectedMovePct below this threshold are filtered out.
+   * 0 or undefined = no minimum (backward compatible).
+   */
+  minExpectedMove?: number;
   
   /** 
    * Allowed signal types (e.g., ['buy', 'Hypersurge'])

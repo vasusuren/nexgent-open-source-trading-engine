@@ -234,7 +234,7 @@ model AgentHistoricalSwap {
   saleTransactionId     String?           @map("sale_transaction_id") @db.Uuid
   signalId              Int?              @map("signal_id")
   createdAt             DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
-  closeReason           String?           @map("close_reason") @db.VarChar(20)
+  closeReason           String?           @map("close_reason") @db.VarChar(50)
   agent                 Agent             @relation(fields: [agentId], references: [id], onDelete: Cascade)
   purchaseTransaction   AgentTransaction? @relation("PurchaseTransaction", fields: [purchaseTransactionId], references: [id])
   saleTransaction       AgentTransaction? @relation("SaleTransaction", fields: [saleTransactionId], references: [id])

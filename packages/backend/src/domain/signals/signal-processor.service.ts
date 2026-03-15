@@ -160,7 +160,7 @@ export class SignalProcessor {
           await tradingExecutor.executeSale({
             agentId,
             positionId: pos.id,
-            reason: 'replaced_by_higher_score_signal',
+            reason: 'signal_replace',
           });
         }
         // Fall through — executePurchase opens the new position

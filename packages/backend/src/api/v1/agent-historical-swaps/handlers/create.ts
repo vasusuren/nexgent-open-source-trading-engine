@@ -286,7 +286,7 @@ export async function createAgentHistoricalSwap(req: AuthenticatedRequest, res: 
 
     // Validate closeReason if provided
     if (closeReason !== undefined && closeReason !== null) {
-      const validReasons = ['manual', 'stop_loss', 'stale_trade'];
+      const validReasons = ['manual', 'stop_loss', 'stale_trade', 'signal_replace', 'take_profit'];
       if (!validReasons.includes(closeReason)) {
         return res.status(400).json({
           error: `Close reason must be one of: ${validReasons.join(', ')}`,

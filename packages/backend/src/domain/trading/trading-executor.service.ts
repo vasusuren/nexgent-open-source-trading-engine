@@ -119,7 +119,7 @@ export interface SaleExecutionRequest {
   agentId: string;
   positionId: string;  // Position to close
   walletAddress?: string;   // Optional: uses default wallet if not provided
-  reason?: 'manual' | 'stop_loss' | 'stale_trade' | 'take_profit' | 'replaced_by_higher_score_signal';  // Optional: reason for closure
+  reason?: 'manual' | 'stop_loss' | 'stale_trade' | 'take_profit' | 'signal_replace';  // Optional: reason for closure
 }
 
 /**

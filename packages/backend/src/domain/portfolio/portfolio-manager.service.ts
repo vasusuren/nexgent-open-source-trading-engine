@@ -279,8 +279,17 @@ class PortfolioManagerService {
       getOpenPositionCount(agentId),
     ]);
 
-    // Path 3: capital locked — force-replace weakest regardless of score
-    if (solBalance < minimumBalance && positionCount > 0) {
+    // Path 3: capital locked — force-replace weakest regardless of score.
+    // Triggered when balance is below minimum OR when the headroom above the
+    // minimum is too small to fund a real trade (< 0.01 SOL = 10M lamports).
+    // The latter handles the floating-point edge case where balance is
+    // epsilon above minimumBalance but effectively at the floor.
+    const MIN_USABLE_ABOVE_MINIMUM = 0.01; // SOL
+    const capitalLocked =
+      (solBalance < minimumBalance ||
+        solBalance - minimumBalance < MIN_USABLE_ABOVE_MINIMUM) &&
+      positionCount > 0;
+    if (capitalLocked) {
       logger.info(
         { agentId, solBalance, minimumBalance, positionCount },
         'PortfolioManager: capital locked — evaluating force-replace',
@@ -310,7 +319,7 @@ class PortfolioManagerService {
     }
 
     // Path 4: free slot available — open normally
-    if (positionCount < MAX_OPEN_POSITIONS && solBalance >= minimumBalance) {
+    if (positionCount < MAX_OPEN_POSITIONS && solBalance >= minimumBalance + MIN_USABLE_ABOVE_MINIMUM) {
       return { action: 'proceed' };
     }
 

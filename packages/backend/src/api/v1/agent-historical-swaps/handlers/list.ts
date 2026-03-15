@@ -224,7 +224,7 @@ export async function listAgentHistoricalSwaps(req: AuthenticatedRequest, res: R
       purchaseTransactionId: swap.purchaseTransactionId,
       saleTransactionId: swap.saleTransactionId,
       signalId: swap.signalId?.toString() || null,
-      closeReason: (swap.closeReason as 'manual' | 'stop_loss' | 'stale_trade' | null) || null,
+      closeReason: (swap.closeReason as 'manual' | 'stop_loss' | 'stale_trade' | 'signal_replace' | 'take_profit' | null) || null,
       createdAt: swap.createdAt,
     }));
 

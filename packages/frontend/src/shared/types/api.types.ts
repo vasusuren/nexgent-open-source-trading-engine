@@ -175,7 +175,7 @@ export interface AgentHistoricalSwap {
   purchaseTransactionId: string | null;
   saleTransactionId: string | null;
   signalId: string | null;
-  closeReason: 'manual' | 'stop_loss' | 'stale_trade' | null;
+  closeReason: 'manual' | 'stop_loss' | 'stale_trade' | 'signal_replace' | 'take_profit' | null;
   createdAt: string;
 }
 

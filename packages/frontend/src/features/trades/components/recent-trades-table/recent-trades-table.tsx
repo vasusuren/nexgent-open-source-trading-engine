@@ -401,13 +401,17 @@ export function RecentTradesTable() {
                       </TableCell>
                       <TableCell>
                         <span className="text-sm text-muted-foreground">
-                          {swap.closeReason === 'stale_trade' 
-                            ? 'Stale Trade' 
+                          {swap.closeReason === 'stale_trade'
+                            ? 'Stale Trade'
                             : swap.closeReason === 'stop_loss'
                             ? 'Stop Loss'
                             : swap.closeReason === 'manual'
                             ? 'Manual'
-                            : 'Stop Loss Triggered'}
+                            : swap.closeReason === 'signal_replace'
+                            ? 'Replaced'
+                            : swap.closeReason === 'take_profit'
+                            ? 'Take Profit'
+                            : swap.closeReason ?? 'Unknown'}
                         </span>
                       </TableCell>
                     </TableRow>

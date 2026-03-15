@@ -88,22 +88,20 @@ export function RecentTradesTable() {
     setCurrentPage(1);
   }, [walletAddress]);
 
-  // Fetch historical swaps (filtered by current trading mode wallet)
-  // Only fetch when we have both agentId AND walletAddress to avoid fetching unfiltered data
+  // Fetch historical swaps (filtered by current trading mode wallet if available)
+  // walletAddress may be undefined if the agent has no wallet for the current mode —
+  // in that case we still fetch all trades for the agent (no wallet filter applied).
   const { data: swaps = [], isLoading, isError, error, refetch } = useHistoricalSwaps({
     agentId: selectedAgentId || '',
-    walletAddress, // Filter by current trading mode wallet
+    walletAddress, // Filter by current trading mode wallet (omitted when undefined)
     limit: 1000, // Fetch enough to handle client-side filtering/sorting
-  }, { enabled: !!selectedAgentId && !!walletAddress }); // Only enabled when walletAddress is available
+  }, { enabled: !!selectedAgentId }); // Only requires agentId
 
   // Export hook
   const exportTrades = useExportTrades();
 
   // Filtering and sorting logic
   const filteredSwaps = useMemo(() => {
-    // If no wallet address (no wallet for current trading mode), return empty array
-    if (!walletAddress) return [];
-    
     // Create a copy to avoid mutating the original array
     let filtered = [...swaps];
 
